@@ -1,15 +1,53 @@
 package main
 
 import (
+	"context"
 	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"time"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/logicmonitor/lm-telemetry-sdk-go/config"
+	"github.com/logicmonitor/lm-telemetry-sdk-go/telemetry"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"	
 )
 
+var (
+	tracer trace.Tracer
+)
+
+func initTracing() {
+	ctx := context.Background()
+
+	customAttributes := map[string]string{
+		"service.namespace": "sample-namespace",
+		"service.name":      "sample-service",
+	}
+
+	err := telemetry.SetupTelemetry(ctx,
+		config.WithAttributes(customAttributes),
+		config.WithAWSEC2Detector(),
+		config.WithHTTPTraceEndpoint("20.83.118.211:4318"),
+		config.WithSimlpeSpanProcessor(),
+		//config.WithDefaultInAppExporter(),
+	)
+	if err != nil {
+		log.Fatalf("error in setting up telemetry: %s", err.Error())
+	}
+	tracer = otel.Tracer("tracer-1")
+
+}
+
 func main() {
-	http.HandleFunc("/sales_orders", salesOrdersHandler)
+	initTracing()
+	otelSalesOrdersHandler := otelhttp.NewHandler(http.HandlerFunc(salesOrdersHandler), "sales_orders")
+	// http.HandleFunc("/sales_orders", salesOrdersHandler)
+	http.Handle("/sales_orders", otelSalesOrdersHandler)
 	http.ListenAndServe(":9090", nil)
 }
 
@@ -36,6 +74,7 @@ func createSalesOrder(params map[string]interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	time.Sleep(2 * time.Second)
 
 	defer db.Close()
 
