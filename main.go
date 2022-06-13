@@ -2,20 +2,27 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	//"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/XSAM/otelsql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/logicmonitor/lm-telemetry-sdk-go/config"
 	"github.com/logicmonitor/lm-telemetry-sdk-go/telemetry"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"	
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/otel/trace"
 )
+
+const instrumentationName = "github.com/XSAM/otelsql/example"
+
+var serviceName = semconv.ServiceNameKey.String("sales-orders")
+var mysqlDSN = "store_db_user:Mysql!1221@tcp(127.0.0.1:3306)/store_db"
 
 var (
 	tracer trace.Tracer
@@ -70,7 +77,15 @@ func salesOrdersHandler(w http.ResponseWriter, req *http.Request) {
 
 func createSalesOrder(params map[string]interface{}) (string, error) {
 
-	db, err := sql.Open("mysql", "store_db_user:Mysql!1221@tcp(127.0.0.1:3306)/store_db")
+	// Create a span
+	tracer := otel.GetTracerProvider()
+	ctx, span := tracer.Tracer(instrumentationName).Start(context.Background(), "sales-orders")
+	defer span.End()
+
+	//db, err := sql.Open("mysql", "store_db_user:Mysql!1221@tcp(127.0.0.1:3306)/store_db")
+	db, err := otelsql.Open("mysql", mysqlDSN, otelsql.WithAttributes(
+		semconv.DBSystemMySQL,
+	))
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +97,7 @@ func createSalesOrder(params map[string]interface{}) (string, error) {
 
 	queryString := "insert into sales_orders(customer_id, order_date) values (?, ?)"
 
-	response, err := tx.Exec(queryString, params["customer_id"], params["order_date"])
+	response, err := tx.ExecContext(ctx, queryString, params["customer_id"], params["order_date"])
 
 	if err != nil {
 		tx.Rollback()
@@ -121,4 +136,3 @@ func createSalesOrder(params map[string]interface{}) (string, error) {
 
 	return "Success, Sales id is: " + fmt.Sprint(orderId) + "\r\n", nil
 }
-

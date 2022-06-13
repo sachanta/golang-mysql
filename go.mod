@@ -12,6 +12,7 @@ require (
 
 require (
 	cloud.google.com/go v0.88.0 // indirect
+	github.com/XSAM/otelsql v0.14.1 // indirect
 	github.com/aws/aws-lambda-go v1.27.1 // indirect
 	github.com/aws/aws-sdk-go v1.40.41 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.1 // indirect
